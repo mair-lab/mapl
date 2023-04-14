@@ -9,7 +9,7 @@ Official code for the EACL 2023 (main track) paper: [MAPL: Parameter-Efficient A
 ## Install dependencies
 
 ```bash
-pip install torch transformers pillow
+pip install torch transformers accelerate pillow
 ```
 
 ## Usage

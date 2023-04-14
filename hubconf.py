@@ -1,4 +1,4 @@
-dependencies = ['torch', 'transformers']
+dependencies = ['torch', 'transformers', 'accelerate']
 
 from typing import Any
 
