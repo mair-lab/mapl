@@ -29,8 +29,8 @@ url = "http://images.cocodataset.org/val2017/000000039769.jpg"
 image = Image.open(urllib.request.urlopen(url))
 pixel_values = model.image_transform(image).unsqueeze(0).to(device)
 
-text = "Please answer the question. Question: How many cats are there? Answer:"
-input_ids = model.text_transform(text).input_ids.to(device)
+prompt = "Please answer the question. Question: How many cats are there? Answer:"
+input_ids = model.text_transform(prompt).input_ids.to(device)
 
 with torch.cuda.amp.autocast(dtype=torch.float16):
     generated_ids = model.generate(
