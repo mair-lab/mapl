@@ -148,7 +148,7 @@ class MAPL(nn.Module):
         self.text_processor = AutoTokenizer.from_pretrained(gpt_model_id)
         if self.text_processor._pad_token is None:
             self.text_processor.pad_token = self.text_processor.eos_token
-        self.language_decoder = LanguageDecoder(AutoModelForCausalLM.from_pretrained(gpt_model_id, torch_dtype=torch.float16, revision='float16'))
+        self.language_decoder = LanguageDecoder(AutoModelForCausalLM.from_pretrained(gpt_model_id, torch_dtype=torch.float16, revision='float16', low_cpu_mem_usage=True))
         for param in self.language_decoder.parameters():
             param.requires_grad = False
 
