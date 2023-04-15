@@ -32,7 +32,7 @@ pixel_values = model.image_transform(image).unsqueeze(0).to(device)
 prompt = "Please answer the question. Question: How many cats are there? Answer:"
 input_ids = model.text_transform(prompt).input_ids.to(device)
 
-with torch.cuda.amp.autocast(dtype=torch.float16):
+with torch.cuda.amp.autocast(dtype=torch.bfloat16):
     generated_ids = model.generate(
         pixel_values=pixel_values,
         input_ids=input_ids,
