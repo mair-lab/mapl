@@ -150,9 +150,9 @@ class MAPL(nn.Module):
 
         logger.info(f'Loading mapper weights from {checkpoint_path}')
         if is_remote_url(checkpoint_path):
-            state_dict = torch.hub.load_state_dict_from_url(checkpoint_path)
+            state_dict = torch.hub.load_state_dict_from_url(checkpoint_path, map_location='cpu')
         else:
-            state_dict = torch.load(checkpoint_path)
+            state_dict = torch.load(checkpoint_path, map_location='cpu')
         model.mapper.load_state_dict(state_dict)
 
         return model
