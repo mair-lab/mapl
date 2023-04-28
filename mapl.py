@@ -12,7 +12,7 @@ from utils import accumulate_padding, torch_dtype, is_remote_url
 
 
 logging.set_verbosity_error()
-logger = logging.get_logger("transformers")
+logger = logging.get_logger('transformers')
 
 
 class LanguageDecoder(nn.Module):
@@ -148,7 +148,7 @@ class MAPL(nn.Module):
         with torch_dtype(dtype):
             model = cls(**kwargs)
 
-        logger.info(f'Loading mapper weights from {checkpoint_path}')
+        logger.info(f"Loading mapper weights from {checkpoint_path}")
         if is_remote_url(checkpoint_path):
             state_dict = torch.hub.load_state_dict_from_url(checkpoint_path, map_location='cpu')
         else:
