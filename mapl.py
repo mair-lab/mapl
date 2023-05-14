@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Union, Callable
+from typing import List, Tuple, Union, Callable
 
 import torch
 import torch.nn as nn
@@ -46,10 +46,10 @@ class LanguageDecoder(nn.Module):
         else:
             raise NotImplementedError
 
-    def prepare_inputs_for_generation(self, input_ids, attention_mask, visual_embeds, past_key_values=None, use_cache=None, **kwargs):
-        expand_size = input_ids.size(0) // visual_embeds.size(0)
-        visual_embeds = visual_embeds.repeat_interleave(expand_size, dim=0)
-        visual_mask = torch.ones(visual_embeds.shape[:2], dtype=torch.long, device=visual_embeds.device)
+    def prepare_inputs_for_generation(self, input_ids, attention_mask, prompt_embeds, prompt_mask, past_key_values=None, use_cache=None, **kwargs):
+        expand_size = input_ids.size(0) // prompt_embeds.size(0)
+        prompt_embeds = prompt_embeds.repeat_interleave(expand_size, dim=0)
+        prompt_mask = prompt_mask.repeat_interleave(expand_size, dim=0)
 
         if input_ids[0][0] == self.model.config.bos_token_id:
             input_ids = input_ids[:, 1:]
@@ -57,8 +57,8 @@ class LanguageDecoder(nn.Module):
 
         token_embeds = self.embed_tokens(input_ids)
         
-        input_embeds = torch.cat([visual_embeds, token_embeds], dim=1)
-        attention_mask = torch.cat([visual_mask, attention_mask], dim=1)
+        input_embeds = torch.cat([prompt_embeds, token_embeds], dim=1)
+        attention_mask = torch.cat([prompt_mask, attention_mask], dim=1)
 
         input_embeds, attention_mask = accumulate_padding(input_embeds, attention_mask, padding_side='left')
 
@@ -129,7 +129,8 @@ class MAPL(nn.Module):
         self.text_processor = AutoTokenizer.from_pretrained(gpt_model_id)
         if self.text_processor._pad_token is None:
             self.text_processor.pad_token = self.text_processor.eos_token
-        self.language_decoder = LanguageDecoder(AutoModelForCausalLM.from_pretrained(gpt_model_id, torch_dtype=torch.float16, revision='float16', low_cpu_mem_usage=True))
+        self.language_decoder = AutoModelForCausalLM.from_pretrained(gpt_model_id, torch_dtype=torch.float16, revision='float16', low_cpu_mem_usage=True)
+        self.language_decoder = LanguageDecoder(self.language_decoder)
         for param in self.language_decoder.parameters():
             param.requires_grad = False
 
@@ -197,22 +198,56 @@ class MAPL(nn.Module):
         
         return outputs
     
+    def embed_multimodal_prompt(self, inputs: List[Union[Image.Image, str]]) -> Tuple[torch.Tensor, torch.Tensor]:
+        device = next(self.parameters()).device
+        dtype = next(self.parameters()).dtype
+        prompt_embeds = []
+        prompt_mask = []
+        for input in inputs:
+            if isinstance(input, Image.Image):
+                pixel_values = self.image_processor(input, return_tensors='pt').pixel_values.to(device, dtype)
+                input_embeds = self.embed_image(pixel_values)
+                attention_mask = torch.ones(input_embeds.shape[:2], dtype=torch.long, device=input_embeds.device)
+            elif isinstance(input, str):
+                input_ids = self.text_processor(input, return_tensors='pt').input_ids.to(device)
+                input_embeds = self.embed_text(input_ids)
+                attention_mask = (input_ids != self.text_processor.pad_token_id).long()
+            else:
+                raise TypeError(f"Unsupported type {type(input)} for prompt input")
+            prompt_embeds.append(input_embeds)
+            prompt_mask.append(attention_mask)
+        prompt_embeds = torch.cat(prompt_embeds, dim=1)
+        prompt_mask = torch.cat(prompt_mask, dim=1)
+        return prompt_embeds, prompt_mask
+    
     @torch.inference_mode()
     def generate(
         self,
-        pixel_values: torch.Tensor,
+        pixel_values: torch.Tensor = None,
         input_ids: torch.Tensor = None,
+        prompt_embeds: torch.Tensor = None,
+        prompt_mask: torch.Tensor = None,
         **kwargs
     ) -> List[str]:
-        visual_embeds = self.embed_image(pixel_values)
-        if input_ids is None:
-            input_ids = torch.full((visual_embeds.size(0), 1), self.text_processor.bos_token_id, dtype=torch.long, device=visual_embeds.device)
-        attention_mask = (input_ids != self.text_processor.pad_token_id).long()
+        assert (pixel_values is not None) ^ (prompt_embeds is not None), "Either pixel_values or prompt_embeds must be specified"
+
+        if prompt_embeds is None:
+            prompt_embeds = self.embed_image(pixel_values)
+            prompt_mask = torch.ones(prompt_embeds.shape[:2], dtype=torch.long, device=prompt_embeds.device)
+            if input_ids is not None:
+                input_embeds = self.embed_text(input_ids)
+                attention_mask = (input_ids != self.text_processor.pad_token_id).long()
+                prompt_embeds = torch.cat((prompt_embeds, input_embeds), dim=1)
+                prompt_mask = torch.cat((prompt_mask, attention_mask), dim=1)
+
+        input_ids = torch.full((prompt_embeds.size(0), 1), self.text_processor.bos_token_id, dtype=torch.long, device=prompt_embeds.device)
+        attention_mask = torch.ones_like(input_ids)
 
         output_ids = self.language_decoder.generate(
             inputs=input_ids,
             attention_mask=attention_mask,
-            visual_embeds=visual_embeds,
+            prompt_embeds=prompt_embeds,
+            prompt_mask=prompt_mask,
             eos_token_id=self.text_processor.get_vocab()['.'],
             pad_token_id=self.text_processor.pad_token_id,
             **kwargs
