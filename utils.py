@@ -1,5 +1,6 @@
+from pathlib import Path
 from urllib.parse import urlparse
-from typing import Tuple, Any, Optional
+from typing import Tuple, Any, Optional, Union
 
 import torch
 
@@ -40,3 +41,12 @@ class torch_dtype:
 def is_remote_url(url_or_filename):
     parsed = urlparse(url_or_filename)
     return parsed.scheme in ("http", "https")
+
+
+def convert_lightning_checkpoint(src_path: Union[str, Path], dst_path: Union[str, Path]) -> None:
+    checkpoint = torch.load(src_path, map_location='cpu')
+    hparams = checkpoint['hyper_parameters']
+    for k, v in hparams.items():
+        print(f"{k}: {v}")
+    state_dict = checkpoint['state_dict']
+    torch.save(state_dict, dst_path)

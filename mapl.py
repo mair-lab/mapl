@@ -84,7 +84,8 @@ class MappingNetwork(nn.Module):
         num_layers: int = 4,
         output_length: int = 32,
         activation: Callable[[torch.Tensor], torch.Tensor] = F.relu,
-        proj_bias: bool = True
+        proj_bias: bool = True,
+        dropout: float = 0.1
     ) -> None:
         super().__init__()
         self.down = nn.Linear(input_dim, hidden_dim, bias=proj_bias)
@@ -93,7 +94,7 @@ class MappingNetwork(nn.Module):
             d_model=hidden_dim,
             nhead=num_heads,
             dim_feedforward=2 * hidden_dim,
-            dropout=0.,
+            dropout=dropout,
             activation=activation,
             batch_first=True,
             norm_first=True
@@ -193,7 +194,15 @@ class MAPL(nn.Module):
         
         input_embeds, attention_mask = accumulate_padding(input_embeds, attention_mask, padding_side='right')
 
-        outputs = self.language_decoder(inputs_embeds=input_embeds, attention_mask=attention_mask)
+        start_idx = visual_mask.sum(dim=1)
+        if prefix_ids is not None:
+            start_idx += prefix_token_mask.sum(dim=1)
+        end_idx = start_idx + target_token_mask.sum(dim=1)
+        labels = torch.full_like(attention_mask, -100)
+        for i, (j, k) in enumerate(zip(start_idx, end_idx)):
+            labels[i, j:k] = target_ids[i, :k-j]
+
+        outputs = self.language_decoder(inputs_embeds=input_embeds, attention_mask=attention_mask, labels=labels)
         
         return outputs
     
