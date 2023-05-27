@@ -67,7 +67,6 @@ class LitMAPL(LightningModule):
                 new_name = name[len('model.mapper.'):]
                 new_state_dict[new_name] = param
         checkpoint['state_dict'] = new_state_dict
-        return checkpoint
 
 
 def parse_args():
